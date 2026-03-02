@@ -1,0 +1,6 @@
+#!/home/beroa/dev/melee-magnets-2/.tools/melee/venv/bin/python
+import sys
+from meleedat2json import main
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(main())

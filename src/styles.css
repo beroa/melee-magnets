@@ -1,0 +1,251 @@
+:root {
+  color-scheme: dark;
+  --bg: #050913;
+  --panel: rgba(8, 16, 30, 0.95);
+  --panel-border: rgba(114, 138, 182, 0.42);
+  --ink: #f3f6ff;
+  --ink-dim: #bec9e4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 0.6rem;
+}
+
+.stage-wrap {
+  position: relative;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #070d1a;
+  height: calc(100vh - 2rem);
+  min-height: 560px;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+canvas:active {
+  cursor: grabbing;
+}
+
+.topbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  font-size: 0.85rem;
+}
+
+.topbar button {
+  border: 1px solid #4a628f;
+  border-radius: 8px;
+  background: #11203a;
+  color: var(--ink);
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+
+.topbar .fps-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.topbar .fps-control input {
+  width: 100px;
+}
+
+.topbar .stage-control,
+.topbar .zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.topbar .stage-control select {
+  width: 170px;
+}
+
+.topbar .zoom-control input {
+  width: 120px;
+}
+
+.fighter-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: min(360px, 38vw);
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.fighter-menu h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.88rem;
+  color: var(--ink-dim);
+}
+
+select,
+input[type="range"] {
+  width: 100%;
+}
+
+select {
+  border: 1px solid #4b628e;
+  border-radius: 8px;
+  background: #0f1d35;
+  color: var(--ink);
+  padding: 0.4rem 0.5rem;
+}
+
+input[type="range"] {
+  accent-color: #3ecf8e;
+}
+
+.frame-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0.32rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.frame-btn {
+  border: 1px solid #435678;
+  border-radius: 6px;
+  background: #101b2f;
+  color: #c8d3f0;
+  font-size: 0.72rem;
+  padding: 0.28rem 0.2rem;
+}
+
+.frame-btn.active {
+  background: #1d6e46;
+  border-color: #58d48f;
+  color: #e6ffef;
+}
+
+.frame-btn.current {
+  outline: 2px solid #ffd166;
+  outline-offset: 1px;
+}
+
+.legend {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #a7ffd4;
+}
+
+.status-bar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.86rem;
+}
+
+.status-bar .outcome-text {
+  font-size: 1.28rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.error-banner {
+  margin-top: 0.6rem;
+  border: 1px solid #f75d59;
+  color: #ffe3e3;
+  padding: 0.55rem 0.7rem;
+  background: rgba(247, 93, 89, 0.16);
+  border-radius: 10px;
+}
+
+.hit-log {
+  margin-top: 0.55rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 0.5rem 0.65rem;
+}
+
+.hit-log p {
+  margin: 0.15rem 0;
+  font-size: 0.82rem;
+  color: var(--ink-dim);
+}
+
+@media (max-width: 900px) {
+  .fighter-menu {
+    width: calc(100% - 20px);
+    max-height: 42%;
+    top: auto;
+    bottom: 60px;
+  }
+
+  .topbar {
+    max-width: calc(100% - 20px);
+    flex-wrap: wrap;
+  }
+
+  .status-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .frame-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
