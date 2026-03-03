@@ -53,9 +53,19 @@ function getFrameBottomOffset(frame, fighter) {
   return Number.isFinite(minBottom) ? -minBottom : 0;
 }
 
-function getStandingBottomOffset(animation, fighter) {
-  const firstFrame = animation?.move?.frames?.[0] ?? null;
-  return getFrameBottomOffset(firstFrame, fighter);
+function getFrameAtIndex(animation, frameIndex) {
+  const frames = animation?.move?.frames;
+  if (!Array.isArray(frames) || frames.length === 0) {
+    return null;
+  }
+
+  const normalized = ((frameIndex ?? 0) % frames.length + frames.length) % frames.length;
+  return frames[normalized];
+}
+
+function getBottomOffsetForFrame(animation, frameIndex, fighter) {
+  const frame = getFrameAtIndex(animation, frameIndex);
+  return getFrameBottomOffset(frame, fighter);
 }
 
 function pickFighterAtPoint(point, fighters, frameState) {
@@ -110,11 +120,12 @@ function getStageSpawnX(stageId, slot) {
   return Math.round(bounds.minX + span * ratio);
 }
 
-function getGroundedOriginY(stageId, x, animation, fighter) {
-  const snapSurfaceY = getSnapYForX(stageId, x);
-  const bottomOffset = getStandingBottomOffset(animation, fighter);
+function getGroundedOriginY(stageId, x, animation, frameIndex, fighter, currentY) {
+  const bottomOffset = getBottomOffsetForFrame(animation, frameIndex, fighter);
+  const targetSurfaceY = Number.isFinite(currentY) ? currentY - bottomOffset : undefined;
+  const snapSurfaceY = getSnapYForX(stageId, x, targetSurfaceY);
   const floorY = Number.isFinite(snapSurfaceY) ? snapSurfaceY : 0;
-  return clamp(floorY + bottomOffset, STAGE_CANVAS.minY, 220);
+  return clamp(floorY + bottomOffset, STAGE_CANVAS.minY, 240);
 }
 
 export default function App() {
@@ -123,7 +134,6 @@ export default function App() {
   const dragStateRef = useRef(null);
   const fightersRef = useRef({ fighterA: null, fighterB: null });
   const frameStateRef = useRef(null);
-  const spawnedRef = useRef({ A: false, B: false });
 
   const [characters, setCharacters] = useState([]);
   const [fighterA, setFighterA] = useState(null);
@@ -138,6 +148,8 @@ export default function App() {
   const [hitLog, setHitLog] = useState([]);
   const [selectedFighter, setSelectedFighter] = useState(null);
   const [draggingFighter, setDraggingFighter] = useState(null);
+  const [groundLockA, setGroundLockA] = useState(true);
+  const [groundLockB, setGroundLockB] = useState(true);
   const [stageId, setStageId] = useState(DEFAULT_STAGE_ID);
   const [zoom, setZoom] = useState(1);
   const [error, setError] = useState("");
@@ -187,10 +199,8 @@ export default function App() {
 
       if (which === "A") {
         setFighterA(updater);
-        spawnedRef.current.A = false;
       } else {
         setFighterB(updater);
-        spawnedRef.current.B = false;
       }
 
       resetFighterFrameContext(which);
@@ -385,24 +395,36 @@ export default function App() {
   }, [frameState]);
 
   useEffect(() => {
-    if (!fighterA || !animationA || spawnedRef.current.A) {
+    if (!groundLockA || !fighterA || !animationA) {
       return;
     }
 
-    const spawnY = getGroundedOriginY(stageId, fighterA.x, animationA, fighterA);
-    setFighterA((current) => ({ ...current, y: Math.round(spawnY) }));
-    spawnedRef.current.A = true;
-  }, [animationA, fighterA, stageId]);
+    const groundedY = Math.round(
+      getGroundedOriginY(stageId, fighterA.x, animationA, frameIndexA, fighterA, fighterA.y)
+    );
+    setFighterA((current) => {
+      if (!current || current.characterId !== fighterA.characterId || current.y === groundedY) {
+        return current;
+      }
+      return { ...current, y: groundedY };
+    });
+  }, [animationA, fighterA, frameIndexA, groundLockA, stageId]);
 
   useEffect(() => {
-    if (!fighterB || !animationB || spawnedRef.current.B) {
+    if (!groundLockB || !fighterB || !animationB) {
       return;
     }
 
-    const spawnY = getGroundedOriginY(stageId, fighterB.x, animationB, fighterB);
-    setFighterB((current) => ({ ...current, y: Math.round(spawnY) }));
-    spawnedRef.current.B = true;
-  }, [animationB, fighterB, stageId]);
+    const groundedY = Math.round(
+      getGroundedOriginY(stageId, fighterB.x, animationB, frameIndexB, fighterB, fighterB.y)
+    );
+    setFighterB((current) => {
+      if (!current || current.characterId !== fighterB.characterId || current.y === groundedY) {
+        return current;
+      }
+      return { ...current, y: groundedY };
+    });
+  }, [animationB, fighterB, frameIndexB, groundLockB, stageId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -488,18 +510,23 @@ export default function App() {
       );
       const draggedFighter = dragState.fighterId === "A" ? fighterA : fighterB;
       const draggedAnimation = dragState.fighterId === "A" ? animationA : animationB;
-      const bottomOffset = getStandingBottomOffset(draggedAnimation, draggedFighter);
+      const draggedFrameIndex = dragState.fighterId === "A" ? frameIndexA : frameIndexB;
+      const bottomOffset = getBottomOffsetForFrame(draggedAnimation, draggedFrameIndex, draggedFighter);
       const nextYRaw = clamp(point.y - dragState.offsetY, STAGE_CANVAS.minY, 240);
-      const snapSurfaceY = getSnapYForX(stageId, nextX, nextYRaw + bottomOffset);
+      const snapSurfaceY = getSnapYForX(stageId, nextX, nextYRaw - bottomOffset);
       const groundedY = Number.isFinite(snapSurfaceY)
         ? clamp(snapSurfaceY + bottomOffset, STAGE_CANVAS.minY, 240)
         : null;
-      const nextY = groundedY !== null && Math.abs(nextYRaw - groundedY) <= FLOOR_SNAP_DISTANCE
-        ? groundedY
-        : nextYRaw;
+      const didSnap = groundedY !== null && Math.abs(nextYRaw - groundedY) <= FLOOR_SNAP_DISTANCE;
+      const nextY = didSnap ? groundedY : nextYRaw;
 
       setFighterValue(dragState.fighterId, "x", Math.round(nextX));
       setFighterValue(dragState.fighterId, "y", Math.round(nextY));
+      if (dragState.fighterId === "A") {
+        setGroundLockA(didSnap);
+      } else {
+        setGroundLockB(didSnap);
+      }
     }
 
     function stopDragging(event) {
@@ -535,7 +562,18 @@ export default function App() {
       canvas.removeEventListener("pointercancel", stopDragging);
       canvas.removeEventListener("wheel", onWheel);
     };
-  }, [animationA, animationB, fighterA, fighterB, minZoom, projection, setFighterValue, stageId]);
+  }, [
+    animationA,
+    animationB,
+    fighterA,
+    fighterB,
+    frameIndexA,
+    frameIndexB,
+    minZoom,
+    projection,
+    setFighterValue,
+    stageId
+  ]);
 
   const selectedAnimation = selectedFighter === "A" ? animationA : animationB;
   const selectedCharacter = selectedFighter === "A" ? characterA : characterB;
