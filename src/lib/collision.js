@@ -1,3 +1,5 @@
+import { MODEL_SCALE } from "./stage.js";
+
 function circlesOverlap(a, b) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
@@ -34,6 +36,72 @@ function circleCapsuleOverlap(circle, capsule) {
   return distanceSquared <= radius * radius;
 }
 
+function orientation(a, b, c) {
+  return (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+}
+
+function onSegment(a, b, c) {
+  return (
+    b.x <= Math.max(a.x, c.x) + Number.EPSILON &&
+    b.x + Number.EPSILON >= Math.min(a.x, c.x) &&
+    b.y <= Math.max(a.y, c.y) + Number.EPSILON &&
+    b.y + Number.EPSILON >= Math.min(a.y, c.y)
+  );
+}
+
+function segmentsIntersect(aStart, aEnd, bStart, bEnd) {
+  const o1 = orientation(aStart, aEnd, bStart);
+  const o2 = orientation(aStart, aEnd, bEnd);
+  const o3 = orientation(bStart, bEnd, aStart);
+  const o4 = orientation(bStart, bEnd, aEnd);
+
+  if (
+    ((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) &&
+    ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0))
+  ) {
+    return true;
+  }
+
+  if (Math.abs(o1) <= Number.EPSILON && onSegment(aStart, bStart, aEnd)) {
+    return true;
+  }
+  if (Math.abs(o2) <= Number.EPSILON && onSegment(aStart, bEnd, aEnd)) {
+    return true;
+  }
+  if (Math.abs(o3) <= Number.EPSILON && onSegment(bStart, aStart, bEnd)) {
+    return true;
+  }
+  if (Math.abs(o4) <= Number.EPSILON && onSegment(bStart, aEnd, bEnd)) {
+    return true;
+  }
+
+  return false;
+}
+
+function segmentSegmentDistanceSquared(aStart, aEnd, bStart, bEnd) {
+  if (segmentsIntersect(aStart, aEnd, bStart, bEnd)) {
+    return 0;
+  }
+
+  return Math.min(
+    pointSegmentDistanceSquared(aStart, bStart, bEnd),
+    pointSegmentDistanceSquared(aEnd, bStart, bEnd),
+    pointSegmentDistanceSquared(bStart, aStart, aEnd),
+    pointSegmentDistanceSquared(bEnd, aStart, aEnd)
+  );
+}
+
+function capsuleCapsuleOverlap(left, right) {
+  const distanceSquared = segmentSegmentDistanceSquared(
+    { x: left.x1, y: left.y1 },
+    { x: left.x2, y: left.y2 },
+    { x: right.x1, y: right.y1 },
+    { x: right.x2, y: right.y2 }
+  );
+  const radius = left.radius + right.radius;
+  return distanceSquared <= radius * radius;
+}
+
 function isCapsule(shape) {
   return (
     shape.kind === "capsule" ||
@@ -58,24 +126,7 @@ function hitShapeOverlap(left, right) {
     return circleCapsuleOverlap(right, left);
   }
 
-  return (
-    circleCapsuleOverlap(
-      { x: left.x1, y: left.y1, radius: left.radius },
-      right
-    ) ||
-    circleCapsuleOverlap(
-      { x: left.x2, y: left.y2, radius: left.radius },
-      right
-    ) ||
-    circleCapsuleOverlap(
-      { x: right.x1, y: right.y1, radius: right.radius },
-      left
-    ) ||
-    circleCapsuleOverlap(
-      { x: right.x2, y: right.y2, radius: right.radius },
-      left
-    )
-  );
+  return capsuleCapsuleOverlap(left, right);
 }
 
 function transformBox(box, fighter) {
@@ -104,15 +155,91 @@ function transformBox(box, fighter) {
   };
 }
 
+function normalizeFrameIndex(frameIndex, frameCount) {
+  if (frameCount <= 0) {
+    return 0;
+  }
+
+  const modulo = frameIndex % frameCount;
+  return modulo < 0 ? modulo + frameCount : modulo;
+}
+
+function hitboxPrimaryKey(hitbox) {
+  return `${hitbox.groupId ?? ""}:${hitbox.id ?? ""}:${hitbox.guid ?? ""}`;
+}
+
+function findPreviousHitbox(currentHitbox, previousBuckets) {
+  const candidates = previousBuckets.get(hitboxPrimaryKey(currentHitbox)) ?? [];
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const boneMatch = candidates.find((candidate) => candidate.bone === currentHitbox.bone);
+  return boneMatch ?? candidates[0];
+}
+
+function buildSweptHitbox(currentHitbox, previousHitbox) {
+  if (!previousHitbox || isCapsule(currentHitbox) || isCapsule(previousHitbox)) {
+    return currentHitbox;
+  }
+
+  const dx = currentHitbox.x - previousHitbox.x;
+  const dy = currentHitbox.y - previousHitbox.y;
+  if (dx * dx + dy * dy <= 1e-6) {
+    return currentHitbox;
+  }
+
+  return {
+    ...currentHitbox,
+    kind: "capsule",
+    x1: previousHitbox.x,
+    y1: previousHitbox.y,
+    x2: currentHitbox.x,
+    y2: currentHitbox.y,
+    radius: Math.max(currentHitbox.radius, previousHitbox.radius),
+    swept: true
+  };
+}
+
+function buildSweptHitboxes(currentHitboxes, previousHitboxes) {
+  if (previousHitboxes.length === 0) {
+    return currentHitboxes;
+  }
+
+  const previousBuckets = new Map();
+  previousHitboxes.forEach((hitbox) => {
+    const key = hitboxPrimaryKey(hitbox);
+    const bucket = previousBuckets.get(key) ?? [];
+    bucket.push(hitbox);
+    previousBuckets.set(key, bucket);
+  });
+
+  return currentHitboxes.map((currentHitbox) => {
+    const previousHitbox = findPreviousHitbox(currentHitbox, previousBuckets);
+    return buildSweptHitbox(currentHitbox, previousHitbox);
+  });
+}
+
 export function getFrameBoxes(animation, frameIndex, fighter) {
   if (!animation || !animation.move.frames.length) {
     return { hurtboxes: [], hitboxes: [], phase: "idle" };
   }
 
-  const frame = animation.move.frames[frameIndex % animation.move.frames.length];
+  const frameCount = animation.move.frames.length;
+  const resolvedFrameIndex = normalizeFrameIndex(frameIndex, frameCount);
+  const frame = animation.move.frames[resolvedFrameIndex];
+  const previousFrame = resolvedFrameIndex > 0
+    ? animation.move.frames[resolvedFrameIndex - 1]
+    : null;
+
+  const currentHitboxes = frame.hitboxes.map((box) => transformBox(box, fighter));
+  const previousHitboxes = previousFrame
+    ? previousFrame.hitboxes.map((box) => transformBox(box, fighter))
+    : [];
+
   return {
     hurtboxes: frame.hurtboxes.map((box) => transformBox(box, fighter)),
-    hitboxes: frame.hitboxes.map((box) => transformBox(box, fighter)),
+    hitboxes: buildSweptHitboxes(currentHitboxes, previousHitboxes),
     phase: frame.phase
   };
 }
@@ -143,4 +270,3 @@ export function detectHitEvents({ attacker, defender, attackerBoxes, defenderBox
 
   return events;
 }
-import { MODEL_SCALE } from "./stage.js";
