@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0f1b"/>
+      <stop offset="100%" stop-color="#16233c"/>
+    </linearGradient>
+    <linearGradient id="capsule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#ff9f1c"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)"/>
+
+  <g transform="translate(13 45) rotate(-33)">
+    <rect x="0" y="-6" width="38" height="12" rx="6" fill="url(#capsule)" opacity="0.95"/>
+    <circle cx="0" cy="0" r="6.2" fill="#ffd166"/>
+    <circle cx="38" cy="0" r="6.2" fill="#ff9f1c"/>
+    <rect x="0" y="-1.6" width="38" height="3.2" rx="1.6" fill="#fff3cd" opacity="0.75"/>
+  </g>
+
+  <circle cx="45.5" cy="19" r="10.5" fill="#ff4d4d" opacity="0.82"/>
+  <circle cx="45.5" cy="19" r="4.3" fill="#ffe8e8" opacity="0.95"/>
+
+  <circle cx="22" cy="18" r="4.8" fill="#5bc0ff" opacity="0.88"/>
+  <circle cx="22" cy="18" r="1.7" fill="#dff5ff"/>
+
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="none" stroke="#8aa9e7" stroke-opacity="0.45" stroke-width="1.6"/>
+</svg>
