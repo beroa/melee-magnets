@@ -121,6 +121,29 @@ function drawFighter(ctx, fighterLabel, boxes, origin, selected, hurtboxFill, hu
   ctx.fillText(fighterLabel, canvasOrigin.x - 18, canvasOrigin.y - 58);
 }
 
+function drawBlastzoneBorder(ctx, projection) {
+  const topLeft = worldToCanvas(
+    { x: projection.fullBounds.minX, y: projection.fullBounds.maxY },
+    projection
+  );
+  const bottomRight = worldToCanvas(
+    { x: projection.fullBounds.maxX, y: projection.fullBounds.minY },
+    projection
+  );
+
+  ctx.save();
+  ctx.strokeStyle = "#ff4d4dd4";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 7]);
+  ctx.strokeRect(
+    topLeft.x,
+    topLeft.y,
+    bottomRight.x - topLeft.x,
+    bottomRight.y - topLeft.y
+  );
+  ctx.restore();
+}
+
 export function drawStageFrame(ctx, {
   frameState,
   fighterA,
@@ -142,6 +165,7 @@ export function drawStageFrame(ctx, {
   gradient.addColorStop(1, "#070b12");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, STAGE_CANVAS.width, STAGE_CANVAS.height);
+  drawBlastzoneBorder(ctx, projection);
 
   const surfaces = getStageSurfaces(stageId);
   surfaces.forEach((surface) => {

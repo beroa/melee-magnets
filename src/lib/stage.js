@@ -10,6 +10,7 @@ export const STAGE_CANVAS = {
 
 export const MODEL_SCALE = 1;
 export const STAGE_ZOOM_MAX = 2.2;
+const BLASTZONE_VIEW_MARGIN = 1.06;
 
 // Geometry and blastzones from libmelee stage constants:
 // https://github.com/altf4/libmelee/blob/main/melee/stages.py
@@ -38,6 +39,15 @@ export const STAGE_PRESETS = {
 
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function clampCenter(axisMin, axisMax, halfExtent, candidate) {
+  const minCenter = axisMin + halfExtent;
+  const maxCenter = axisMax - halfExtent;
+  if (minCenter > maxCenter) {
+    return (axisMin + axisMax) * 0.5;
+  }
+  return clamp(candidate, minCenter, maxCenter);
 }
 
 export function getStageSurfaces(stageId) {
@@ -100,20 +110,56 @@ function getScaleForBounds(bounds) {
   return Math.min(availableWidth / width, availableHeight / height);
 }
 
-export function getProjection(stageId, zoom = 1) {
+function expandBounds(bounds, scale) {
+  if (!Number.isFinite(scale) || scale <= 1) {
+    return bounds;
+  }
+
+  const centerX = (bounds.minX + bounds.maxX) * 0.5;
+  const centerY = (bounds.minY + bounds.maxY) * 0.5;
+  const halfWidth = ((bounds.maxX - bounds.minX) * scale) * 0.5;
+  const halfHeight = ((bounds.maxY - bounds.minY) * scale) * 0.5;
+
+  return {
+    minX: centerX - halfWidth,
+    maxX: centerX + halfWidth,
+    minY: centerY - halfHeight,
+    maxY: centerY + halfHeight
+  };
+}
+
+export function getProjection(stageId, zoom = 1, cameraOffset = { x: 0, y: 0 }) {
   const tightBounds = getStageWorldBounds(stageId, "tight");
   const fullBounds = getStageWorldBounds(stageId, "full");
+  const zoomOutBounds = expandBounds(fullBounds, BLASTZONE_VIEW_MARGIN);
 
   const baseScale = getScaleForBounds(tightBounds);
-  const minScale = getScaleForBounds(fullBounds);
+  const minScale = getScaleForBounds(zoomOutBounds);
   const scale = clamp(baseScale * zoom, minScale, baseScale * STAGE_ZOOM_MAX);
 
-  const centerX = (tightBounds.minX + tightBounds.maxX) * 0.5;
-  const centerY = (tightBounds.minY + tightBounds.maxY) * 0.5;
+  const baseCenterX = (tightBounds.minX + tightBounds.maxX) * 0.5;
+  const baseCenterY = (tightBounds.minY + tightBounds.maxY) * 0.5;
+  const offsetX = Number.isFinite(cameraOffset?.x) ? cameraOffset.x : 0;
+  const offsetY = Number.isFinite(cameraOffset?.y) ? cameraOffset.y : 0;
+  const halfViewWidth = STAGE_CANVAS.width / (2 * scale);
+  const halfViewHeight = STAGE_CANVAS.height / (2 * scale);
+  const centerX = clampCenter(
+    fullBounds.minX,
+    fullBounds.maxX,
+    halfViewWidth,
+    baseCenterX + offsetX
+  );
+  const centerY = clampCenter(
+    fullBounds.minY,
+    fullBounds.maxY,
+    halfViewHeight,
+    baseCenterY + offsetY
+  );
 
   return {
     scale,
     minZoom: Math.max(0.2, minScale / baseScale),
+    isZoomed: scale > baseScale + 1e-6,
     centerX,
     centerY,
     bounds: tightBounds,

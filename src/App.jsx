@@ -132,6 +132,7 @@ export default function App() {
   const canvasRef = useRef(null);
   const activeHitKeysRef = useRef(new Set());
   const dragStateRef = useRef(null);
+  const panStateRef = useRef(null);
   const fightersRef = useRef({ fighterA: null, fighterB: null });
   const frameStateRef = useRef(null);
 
@@ -152,6 +153,7 @@ export default function App() {
   const [groundLockB, setGroundLockB] = useState(true);
   const [stageId, setStageId] = useState(DEFAULT_STAGE_ID);
   const [zoom, setZoom] = useState(1);
+  const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
   const [error, setError] = useState("");
 
   const characterMap = useMemo(
@@ -161,7 +163,10 @@ export default function App() {
 
   const characterA = fighterA ? characterMap.get(fighterA.characterId) : null;
   const characterB = fighterB ? characterMap.get(fighterB.characterId) : null;
-  const projection = useMemo(() => getProjection(stageId, zoom), [stageId, zoom]);
+  const projection = useMemo(
+    () => getProjection(stageId, zoom, cameraOffset),
+    [stageId, zoom, cameraOffset]
+  );
   const minZoom = projection.minZoom;
 
   const setFighterValue = useCallback((which, key, value) => {
@@ -283,6 +288,19 @@ export default function App() {
   useEffect(() => {
     setZoom((current) => clamp(current, minZoom, STAGE_ZOOM_MAX));
   }, [minZoom]);
+
+  useEffect(() => {
+    setCameraOffset({ x: 0, y: 0 });
+  }, [stageId]);
+
+  useEffect(() => {
+    if (zoom > 1 + 1e-6) {
+      return;
+    }
+    setCameraOffset((current) =>
+      current.x === 0 && current.y === 0 ? current : { x: 0, y: 0 }
+    );
+  }, [zoom]);
 
   const frameCountA = animationA?.move.frameCount || 1;
   const frameCountB = animationB?.move.frameCount || 1;
@@ -478,6 +496,17 @@ export default function App() {
       const picked = pickFighterAtPoint(point, fightersRef.current, frameStateRef.current);
       if (!picked) {
         setSelectedFighter(null);
+        if (projection.isZoomed) {
+          event.preventDefault();
+          panStateRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            offsetX: cameraOffset.x,
+            offsetY: cameraOffset.y
+          };
+          canvas.setPointerCapture(event.pointerId);
+        }
         return;
       }
 
@@ -487,6 +516,7 @@ export default function App() {
       }
 
       event.preventDefault();
+      panStateRef.current = null;
       setSelectedFighter(picked);
       setDraggingFighter(picked);
 
@@ -502,46 +532,67 @@ export default function App() {
 
     function onPointerMove(event) {
       const dragState = dragStateRef.current;
-      if (!dragState || dragState.pointerId !== event.pointerId) {
+      if (dragState && dragState.pointerId === event.pointerId) {
+        const point = toCanvasPoint(canvas, event, projection);
+        const stageBounds = getStageWorldBounds(stageId, "full");
+        const nextX = clamp(
+          point.x - dragState.offsetX,
+          stageBounds.minX + STAGE_CANVAS.maxXPadding,
+          stageBounds.maxX - STAGE_CANVAS.maxXPadding
+        );
+        const draggedFighter = dragState.fighterId === "A" ? fighterA : fighterB;
+        const draggedAnimation = dragState.fighterId === "A" ? animationA : animationB;
+        const draggedFrameIndex = dragState.fighterId === "A" ? frameIndexA : frameIndexB;
+        const bottomOffset = getBottomOffsetForFrame(draggedAnimation, draggedFrameIndex, draggedFighter);
+        const nextYRaw = clamp(point.y - dragState.offsetY, STAGE_CANVAS.minY, 240);
+        const snapSurfaceY = getSnapYForX(stageId, nextX, nextYRaw - bottomOffset);
+        const groundedY = Number.isFinite(snapSurfaceY)
+          ? clamp(snapSurfaceY + bottomOffset, STAGE_CANVAS.minY, 240)
+          : null;
+        const didSnap = groundedY !== null && Math.abs(nextYRaw - groundedY) <= FLOOR_SNAP_DISTANCE;
+        const nextY = didSnap ? groundedY : nextYRaw;
+
+        setFighterValue(dragState.fighterId, "x", Math.round(nextX));
+        setFighterValue(dragState.fighterId, "y", Math.round(nextY));
+        if (dragState.fighterId === "A") {
+          setGroundLockA(didSnap);
+        } else {
+          setGroundLockB(didSnap);
+        }
         return;
       }
 
-      const point = toCanvasPoint(canvas, event, projection);
-      const stageBounds = getStageWorldBounds(stageId, "full");
-      const nextX = clamp(
-        point.x - dragState.offsetX,
-        stageBounds.minX + STAGE_CANVAS.maxXPadding,
-        stageBounds.maxX - STAGE_CANVAS.maxXPadding
-      );
-      const draggedFighter = dragState.fighterId === "A" ? fighterA : fighterB;
-      const draggedAnimation = dragState.fighterId === "A" ? animationA : animationB;
-      const draggedFrameIndex = dragState.fighterId === "A" ? frameIndexA : frameIndexB;
-      const bottomOffset = getBottomOffsetForFrame(draggedAnimation, draggedFrameIndex, draggedFighter);
-      const nextYRaw = clamp(point.y - dragState.offsetY, STAGE_CANVAS.minY, 240);
-      const snapSurfaceY = getSnapYForX(stageId, nextX, nextYRaw - bottomOffset);
-      const groundedY = Number.isFinite(snapSurfaceY)
-        ? clamp(snapSurfaceY + bottomOffset, STAGE_CANVAS.minY, 240)
-        : null;
-      const didSnap = groundedY !== null && Math.abs(nextYRaw - groundedY) <= FLOOR_SNAP_DISTANCE;
-      const nextY = didSnap ? groundedY : nextYRaw;
-
-      setFighterValue(dragState.fighterId, "x", Math.round(nextX));
-      setFighterValue(dragState.fighterId, "y", Math.round(nextY));
-      if (dragState.fighterId === "A") {
-        setGroundLockA(didSnap);
-      } else {
-        setGroundLockB(didSnap);
+      const panState = panStateRef.current;
+      if (!panState || panState.pointerId !== event.pointerId || !projection.isZoomed) {
+        return;
       }
+
+      event.preventDefault();
+      const deltaX = event.clientX - panState.startX;
+      const deltaY = event.clientY - panState.startY;
+      setCameraOffset({
+        x: panState.offsetX - deltaX / projection.scale,
+        y: panState.offsetY + deltaY / projection.scale
+      });
     }
 
     function stopDragging(event) {
       const dragState = dragStateRef.current;
-      if (!dragState || dragState.pointerId !== event.pointerId) {
+      const panState = panStateRef.current;
+      const isDragging = dragState && dragState.pointerId === event.pointerId;
+      const isPanning = panState && panState.pointerId === event.pointerId;
+
+      if (!isDragging && !isPanning) {
         return;
       }
 
-      dragStateRef.current = null;
-      setDraggingFighter(null);
+      if (isDragging) {
+        dragStateRef.current = null;
+        setDraggingFighter(null);
+      }
+      if (isPanning) {
+        panStateRef.current = null;
+      }
       if (canvas.hasPointerCapture(event.pointerId)) {
         canvas.releasePointerCapture(event.pointerId);
       }
@@ -570,6 +621,7 @@ export default function App() {
   }, [
     animationA,
     animationB,
+    cameraOffset,
     fighterA,
     fighterB,
     frameIndexA,
