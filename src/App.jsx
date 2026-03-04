@@ -21,7 +21,7 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const FLOOR_SNAP_DISTANCE = 4;
 const DEFAULT_STAGE_ID = "battlefield";
 
-function getFrameBottomOffset(frame, fighter) {
+function getFrameBottomOffset(frame) {
   const hurtboxes = Array.isArray(frame?.hurtboxes) ? frame.hurtboxes : [];
   if (hurtboxes.length === 0) {
     return 0;
@@ -63,9 +63,9 @@ function getFrameAtIndex(animation, frameIndex) {
   return frames[normalized];
 }
 
-function getBottomOffsetForFrame(animation, frameIndex, fighter) {
+function getBottomOffsetForFrame(animation, frameIndex) {
   const frame = getFrameAtIndex(animation, frameIndex);
-  return getFrameBottomOffset(frame, fighter);
+  return getFrameBottomOffset(frame);
 }
 
 function pickFighterAtPoint(point, fighters, frameState) {
@@ -120,8 +120,8 @@ function getStageSpawnX(stageId, slot) {
   return Math.round(bounds.minX + span * ratio);
 }
 
-function getGroundedOriginY(stageId, x, animation, frameIndex, fighter, currentY) {
-  const bottomOffset = getBottomOffsetForFrame(animation, frameIndex, fighter);
+function getGroundedOriginY(stageId, x, animation, frameIndex, currentY) {
+  const bottomOffset = getBottomOffsetForFrame(animation, frameIndex);
   const targetSurfaceY = Number.isFinite(currentY) ? currentY - bottomOffset : undefined;
   const snapSurfaceY = getSnapYForX(stageId, x, targetSurfaceY);
   const floorY = Number.isFinite(snapSurfaceY) ? snapSurfaceY : 0;
@@ -304,7 +304,6 @@ export default function App() {
 
   const frameCountA = animationA?.move.frameCount || 1;
   const frameCountB = animationB?.move.frameCount || 1;
-  const frameCount = Math.max(frameCountA, frameCountB);
 
   useEffect(() => {
     setFrameIndexA((current) => Math.min(current, Math.max(0, frameCountA - 1)));
@@ -423,7 +422,7 @@ export default function App() {
     }
 
     const groundedY = Math.round(
-      getGroundedOriginY(stageId, fighterA.x, animationA, frameIndexA, fighterA, fighterA.y)
+      getGroundedOriginY(stageId, fighterA.x, animationA, frameIndexA, fighterA.y)
     );
     setFighterA((current) => {
       if (!current || current.characterId !== fighterA.characterId || current.y === groundedY) {
@@ -439,7 +438,7 @@ export default function App() {
     }
 
     const groundedY = Math.round(
-      getGroundedOriginY(stageId, fighterB.x, animationB, frameIndexB, fighterB, fighterB.y)
+      getGroundedOriginY(stageId, fighterB.x, animationB, frameIndexB, fighterB.y)
     );
     setFighterB((current) => {
       if (!current || current.characterId !== fighterB.characterId || current.y === groundedY) {
@@ -540,10 +539,9 @@ export default function App() {
           stageBounds.minX + STAGE_CANVAS.maxXPadding,
           stageBounds.maxX - STAGE_CANVAS.maxXPadding
         );
-        const draggedFighter = dragState.fighterId === "A" ? fighterA : fighterB;
         const draggedAnimation = dragState.fighterId === "A" ? animationA : animationB;
         const draggedFrameIndex = dragState.fighterId === "A" ? frameIndexA : frameIndexB;
-        const bottomOffset = getBottomOffsetForFrame(draggedAnimation, draggedFrameIndex, draggedFighter);
+        const bottomOffset = getBottomOffsetForFrame(draggedAnimation, draggedFrameIndex);
         const nextYRaw = clamp(point.y - dragState.offsetY, STAGE_CANVAS.minY, 240);
         const snapSurfaceY = getSnapYForX(stageId, nextX, nextYRaw - bottomOffset);
         const groundedY = Number.isFinite(snapSurfaceY)

@@ -7,3 +7,5 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 vanilla.iso
+tools/hurtbox-cache-extractor/bin/
+tools/hurtbox-cache-extractor/obj/
