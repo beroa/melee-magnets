@@ -133,6 +133,8 @@ export default function App() {
   const activeHitKeysRef = useRef(new Set());
   const dragStateRef = useRef(null);
   const panStateRef = useRef(null);
+  const touchPointsRef = useRef(new Map());
+  const pinchStateRef = useRef(null);
   const fightersRef = useRef({ fighterA: null, fighterB: null });
   const frameStateRef = useRef(null);
 
@@ -490,7 +492,48 @@ export default function App() {
       return;
     }
 
+    function getTouchDistance() {
+      const touchPoints = Array.from(touchPointsRef.current.values());
+      if (touchPoints.length < 2) {
+        return null;
+      }
+      const [first, second] = touchPoints;
+      return Math.hypot(second.x - first.x, second.y - first.y);
+    }
+
+    function getTouchMidpoint() {
+      const touchPoints = Array.from(touchPointsRef.current.values());
+      if (touchPoints.length < 2) {
+        return null;
+      }
+      const [first, second] = touchPoints;
+      return {
+        x: (first.x + second.x) * 0.5,
+        y: (first.y + second.y) * 0.5
+      };
+    }
+
     function onPointerDown(event) {
+      if (event.pointerType === "touch") {
+        touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (touchPointsRef.current.size >= 2) {
+          const startDistance = getTouchDistance();
+          const startMidpoint = getTouchMidpoint();
+          if (Number.isFinite(startDistance) && startDistance > 0 && startMidpoint) {
+            event.preventDefault();
+            dragStateRef.current = null;
+            panStateRef.current = null;
+            setDraggingFighter(null);
+            pinchStateRef.current = {
+              lastDistance: startDistance,
+              lastMidpoint: startMidpoint
+            };
+            canvas.setPointerCapture(event.pointerId);
+            return;
+          }
+        }
+      }
+
       const point = toCanvasPoint(canvas, event, projection);
       const picked = pickFighterAtPoint(point, fightersRef.current, frameStateRef.current);
       if (!picked) {
@@ -530,6 +573,38 @@ export default function App() {
     }
 
     function onPointerMove(event) {
+      if (event.pointerType === "touch" && touchPointsRef.current.has(event.pointerId)) {
+        touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      }
+
+      if (pinchStateRef.current && touchPointsRef.current.size >= 2) {
+        const distance = getTouchDistance();
+        const midpoint = getTouchMidpoint();
+        if (Number.isFinite(distance) && distance > 0 && midpoint) {
+          event.preventDefault();
+          const scaleFactor = distance / pinchStateRef.current.lastDistance;
+          if (Number.isFinite(scaleFactor) && scaleFactor > 0) {
+            setZoom((current) => clamp(current * scaleFactor, minZoom, STAGE_ZOOM_MAX));
+          }
+
+          const deltaX = midpoint.x - pinchStateRef.current.lastMidpoint.x;
+          const deltaY = midpoint.y - pinchStateRef.current.lastMidpoint.y;
+          if (Math.abs(deltaX) > Number.EPSILON || Math.abs(deltaY) > Number.EPSILON) {
+            const pointerScale = Math.max(projection.scale, Number.EPSILON);
+            setCameraOffset((current) => ({
+              x: current.x - deltaX / pointerScale,
+              y: current.y + deltaY / pointerScale
+            }));
+          }
+
+          pinchStateRef.current = {
+            lastDistance: distance,
+            lastMidpoint: midpoint
+          };
+        }
+        return;
+      }
+
       const dragState = dragStateRef.current;
       if (dragState && dragState.pointerId === event.pointerId) {
         const point = toCanvasPoint(canvas, event, projection);
@@ -575,12 +650,20 @@ export default function App() {
     }
 
     function stopDragging(event) {
+      const wasPinching = Boolean(pinchStateRef.current);
+      if (event.pointerType === "touch") {
+        touchPointsRef.current.delete(event.pointerId);
+        if (touchPointsRef.current.size < 2) {
+          pinchStateRef.current = null;
+        }
+      }
+
       const dragState = dragStateRef.current;
       const panState = panStateRef.current;
       const isDragging = dragState && dragState.pointerId === event.pointerId;
       const isPanning = panState && panState.pointerId === event.pointerId;
 
-      if (!isDragging && !isPanning) {
+      if (!isDragging && !isPanning && !wasPinching) {
         return;
       }
 

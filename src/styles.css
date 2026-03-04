@@ -242,15 +242,18 @@ input[type="range"] {
   }
 
   canvas {
+    order: 1;
     width: 100%;
     height: auto;
     aspect-ratio: 1280 / 760;
     border: 1px solid var(--panel-border);
     border-radius: 10px;
     background: #070d1a;
+    touch-action: pan-y;
   }
 
   .fighter-menu {
+    order: 4;
     position: static;
     width: 100%;
     max-height: none;
@@ -259,6 +262,7 @@ input[type="range"] {
   }
 
   .topbar {
+    order: 3;
     position: static;
     max-width: none;
     width: 100%;
@@ -290,6 +294,7 @@ input[type="range"] {
   }
 
   .status-bar {
+    order: 2;
     position: static;
     flex-direction: column;
     align-items: flex-start;
