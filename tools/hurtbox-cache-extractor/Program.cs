@@ -264,7 +264,6 @@ internal sealed class Program
             for (var frameIndex = 0; frameIndex < frameCount; frameIndex += 1)
             {
                 var worldTransforms = poseComputer?.GetWorldTransforms(frameIndex + PoseFrameOffset);
-                var frameRootHorizontal = GetFrameRootHorizontal(worldTransforms, modelScale, motionNodeIndex);
 
                 var frameCache = new FrameCache
                 {
@@ -275,8 +274,7 @@ internal sealed class Program
                                 hurtboxes,
                                 joints,
                                 worldTransforms,
-                                modelScale,
-                                frameRootHorizontal),
+                                modelScale),
                     hitboxes =
                         worldTransforms != null && hitboxesByFrame.TryGetValue(frameIndex, out var activeHitboxes)
                             ? TransformHitboxes(
@@ -284,7 +282,6 @@ internal sealed class Program
                                 joints,
                                 worldTransforms,
                                 modelScale,
-                                frameRootHorizontal,
                                 motionNodeIndex)
                             : new List<HitboxFrame>(0)
                 };
@@ -469,23 +466,6 @@ internal sealed class Program
         return parsedAnyCommand ? frameMap : null;
     }
 
-    private static float GetFrameRootHorizontal(
-        IReadOnlyList<Matrix4>? worldTransforms,
-        float modelScale,
-        int rootReferenceIndex)
-    {
-        if (worldTransforms == null || worldTransforms.Count == 0)
-        {
-            return 0f;
-        }
-
-        var safeIndex = rootReferenceIndex >= 0 && rootReferenceIndex < worldTransforms.Count
-            ? rootReferenceIndex
-            : 0;
-        var rootPosition = Vector3.TransformPosition(Vector3.Zero, worldTransforms[safeIndex]);
-        return rootPosition.Z * modelScale;
-    }
-
     private static int FindMotionNodeIndex(IReadOnlyList<JointTemplate> joints)
     {
         // Fighter skeletons are rooted at TopN, with motion authored on the first
@@ -563,8 +543,7 @@ internal sealed class Program
         IReadOnlyList<SBM_Hurtbox> source,
         IReadOnlyList<JointTemplate> joints,
         IReadOnlyList<Matrix4> worldTransforms,
-        float modelScale,
-        float rootHorizontal)
+        float modelScale)
     {
         var transformed = new List<HurtboxFrame>(source.Count);
 
@@ -594,11 +573,11 @@ internal sealed class Program
                 bone = bone,
                 type = hurtbox.Type.ToString().ToLowerInvariant(),
                 grabbable = hurtbox.Grabbable != 0,
-                x = (p1.Z + p2.Z) * 0.5f - rootHorizontal,
+                x = (p1.Z + p2.Z) * 0.5f,
                 y = (p1.Y + p2.Y) * 0.5f,
-                x1 = p1.Z - rootHorizontal,
+                x1 = p1.Z,
                 y1 = p1.Y,
-                x2 = p2.Z - rootHorizontal,
+                x2 = p2.Z,
                 y2 = p2.Y,
                 radius = hurtbox.Size * modelScale
             });
@@ -612,7 +591,6 @@ internal sealed class Program
         IReadOnlyList<JointTemplate> joints,
         IReadOnlyList<Matrix4> worldTransforms,
         float modelScale,
-        float rootHorizontal,
         int motionNodeIndex)
     {
         var transformed = new List<HitboxFrame>(localHitboxes.Count);
@@ -637,7 +615,7 @@ internal sealed class Program
             {
                 id = $"{hitbox.groupId}-{hitbox.id}-{hitbox.guid}",
                 bone = bone,
-                x = worldPoint.Z - rootHorizontal,
+                x = worldPoint.Z,
                 y = worldPoint.Y,
                 radius = Math.Max(0.01f, (float)hitbox.size * modelScale),
                 damage = (float)hitbox.damage,
