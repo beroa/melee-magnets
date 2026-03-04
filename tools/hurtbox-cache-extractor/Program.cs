@@ -259,10 +259,12 @@ internal sealed class Program
             var hitboxesByFrame =
                 TryBuildFrameHitboxMapFromSubactionEvents(datDump, moveData.subactionIndex, frameCount) ??
                 BuildFrameHitboxMap(moveData.hitFrames, frameCount);
+            var motionNodeIndex = FindMotionNodeIndex(joints);
 
             for (var frameIndex = 0; frameIndex < frameCount; frameIndex += 1)
             {
                 var worldTransforms = poseComputer?.GetWorldTransforms(frameIndex + PoseFrameOffset);
+                var frameRootHorizontal = GetFrameRootHorizontal(worldTransforms, modelScale, motionNodeIndex);
 
                 var frameCache = new FrameCache
                 {
@@ -273,14 +275,17 @@ internal sealed class Program
                                 hurtboxes,
                                 joints,
                                 worldTransforms,
-                                modelScale),
+                                modelScale,
+                                frameRootHorizontal),
                     hitboxes =
                         worldTransforms != null && hitboxesByFrame.TryGetValue(frameIndex, out var activeHitboxes)
                             ? TransformHitboxes(
-                                ApplyKnownHitboxCorrections(character, moveId, activeHitboxes),
+                                activeHitboxes,
                                 joints,
                                 worldTransforms,
-                                modelScale)
+                                modelScale,
+                                frameRootHorizontal,
+                                motionNodeIndex)
                             : new List<HitboxFrame>(0)
                 };
 
@@ -464,32 +469,36 @@ internal sealed class Program
         return parsedAnyCommand ? frameMap : null;
     }
 
-    private static List<HitboxLocal> ApplyKnownHitboxCorrections(
-        CharacterInfo character,
-        string moveId,
-        IReadOnlyList<HitboxLocal> hitboxes)
+    private static float GetFrameRootHorizontal(
+        IReadOnlyList<Matrix4>? worldTransforms,
+        float modelScale,
+        int rootReferenceIndex)
     {
-        var corrected = hitboxes.Select(CloneHitbox).ToList();
-
-        if (!string.Equals(character.Code, "Pe", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(moveId, "dashattack", StringComparison.OrdinalIgnoreCase))
+        if (worldTransforms == null || worldTransforms.Count == 0)
         {
-            return corrected;
+            return 0f;
         }
 
-        var handBone =
-            corrected.FirstOrDefault(hitbox => hitbox.id == 0 && hitbox.bone > 0)?.bone ??
-            87;
+        var safeIndex = rootReferenceIndex >= 0 && rootReferenceIndex < worldTransforms.Count
+            ? rootReferenceIndex
+            : 0;
+        var rootPosition = Vector3.TransformPosition(Vector3.Zero, worldTransforms[safeIndex]);
+        return rootPosition.Z * modelScale;
+    }
 
-        foreach (var hitbox in corrected)
+    private static int FindMotionNodeIndex(IReadOnlyList<JointTemplate> joints)
+    {
+        // Fighter skeletons are rooted at TopN, with motion authored on the first
+        // direct child node (TransN-equivalent). Use that node as root reference.
+        for (var index = 1; index < joints.Count; index += 1)
         {
-            if (hitbox.id == 1 && hitbox.bone == 0)
+            if (joints[index].ParentIndex == 0)
             {
-                hitbox.bone = handBone;
+                return index;
             }
         }
 
-        return corrected;
+        return 0;
     }
 
     private static HitboxLocal CloneHitbox(HitboxLocal hitbox)
@@ -554,7 +563,8 @@ internal sealed class Program
         IReadOnlyList<SBM_Hurtbox> source,
         IReadOnlyList<JointTemplate> joints,
         IReadOnlyList<Matrix4> worldTransforms,
-        float modelScale)
+        float modelScale,
+        float rootHorizontal)
     {
         var transformed = new List<HurtboxFrame>(source.Count);
 
@@ -584,11 +594,11 @@ internal sealed class Program
                 bone = bone,
                 type = hurtbox.Type.ToString().ToLowerInvariant(),
                 grabbable = hurtbox.Grabbable != 0,
-                x = (p1.Z + p2.Z) * 0.5f,
+                x = (p1.Z + p2.Z) * 0.5f - rootHorizontal,
                 y = (p1.Y + p2.Y) * 0.5f,
-                x1 = p1.Z,
+                x1 = p1.Z - rootHorizontal,
                 y1 = p1.Y,
-                x2 = p2.Z,
+                x2 = p2.Z - rootHorizontal,
                 y2 = p2.Y,
                 radius = hurtbox.Size * modelScale
             });
@@ -601,13 +611,15 @@ internal sealed class Program
         IReadOnlyList<HitboxLocal> localHitboxes,
         IReadOnlyList<JointTemplate> joints,
         IReadOnlyList<Matrix4> worldTransforms,
-        float modelScale)
+        float modelScale,
+        float rootHorizontal,
+        int motionNodeIndex)
     {
         var transformed = new List<HitboxFrame>(localHitboxes.Count);
 
         foreach (var hitbox in localHitboxes)
         {
-            var bone = ResolveBoneIndex(hitbox.bone, joints);
+            var bone = ResolveHitboxBoneIndex(hitbox.bone, joints, motionNodeIndex);
             if (bone < 0 || bone >= worldTransforms.Count)
             {
                 continue;
@@ -625,7 +637,7 @@ internal sealed class Program
             {
                 id = $"{hitbox.groupId}-{hitbox.id}-{hitbox.guid}",
                 bone = bone,
-                x = worldPoint.Z,
+                x = worldPoint.Z - rootHorizontal,
                 y = worldPoint.Y,
                 radius = Math.Max(0.01f, (float)hitbox.size * modelScale),
                 damage = (float)hitbox.damage,
@@ -637,6 +649,21 @@ internal sealed class Program
         }
 
         return transformed;
+    }
+
+    private static int ResolveHitboxBoneIndex(
+        int requestedBone,
+        IReadOnlyList<JointTemplate> joints,
+        int motionNodeIndex)
+    {
+        // Hitbox script bone 0 resolves to fighter motion node (TransN-equivalent),
+        // not the static root object.
+        if (requestedBone == 0 && motionNodeIndex > 0)
+        {
+            return motionNodeIndex;
+        }
+
+        return ResolveBoneIndex(requestedBone, joints);
     }
 
     private static int ResolveBoneIndex(int requestedBone, IReadOnlyList<JointTemplate> joints)

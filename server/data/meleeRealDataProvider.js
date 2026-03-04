@@ -250,71 +250,7 @@ function getMoveSortKey(moveId) {
   return [categoryOrder.indexOf("other"), 999, moveId];
 }
 
-function getMedian(values) {
-  if (!Array.isArray(values) || values.length === 0) {
-    return 0;
-  }
-
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.floor(sorted.length * 0.5)];
-}
-
-function getFrameAnchorX(frame) {
-  if (!frame || !Array.isArray(frame.hurtboxes) || frame.hurtboxes.length === 0) {
-    return null;
-  }
-
-  const centers = frame.hurtboxes
-    .map((hurtbox) => asNumber(hurtbox.x, null))
-    .filter((value) => Number.isFinite(value));
-
-  if (centers.length === 0) {
-    return null;
-  }
-
-  return getMedian(centers);
-}
-
-function offsetFrameX(frame, deltaX) {
-  if (!frame || Math.abs(deltaX) <= Number.EPSILON) {
-    return;
-  }
-
-  frame.hurtboxes.forEach((hurtbox) => {
-    hurtbox.x = asNumber(hurtbox.x) - deltaX;
-    hurtbox.x1 = asNumber(hurtbox.x1) - deltaX;
-    hurtbox.x2 = asNumber(hurtbox.x2) - deltaX;
-  });
-
-  frame.hitboxes.forEach((hitbox) => {
-    hitbox.x = asNumber(hitbox.x) - deltaX;
-  });
-}
-
-function applyMoveCorrections(characterId, moveId, frames) {
-  // Peach dash attack currently carries large baked-in horizontal drift that
-  // decouples boxes from fighter origin in the viewer. Rebase per-frame X drift
-  // to preserve relative anatomy/hitbox placement while keeping the move anchored.
-  if (characterId !== "peach" || moveId !== "dashattack" || frames.length === 0) {
-    return;
-  }
-
-  const baselineAnchor = getFrameAnchorX(frames[0]);
-  if (!Number.isFinite(baselineAnchor)) {
-    return;
-  }
-
-  frames.forEach((frame) => {
-    const frameAnchor = getFrameAnchorX(frame);
-    if (!Number.isFinite(frameAnchor)) {
-      return;
-    }
-
-    offsetFrameX(frame, frameAnchor - baselineAnchor);
-  });
-}
-
-function buildMoveAnimation(characterId, moveId, realMoveData) {
+function buildMoveAnimation(moveId, realMoveData) {
   const realFrames = realMoveData.frames;
   const frameCount = Math.max(1, realFrames.length);
   const frames = Array.from({ length: frameCount }, (_, index) => {
@@ -326,8 +262,6 @@ function buildMoveAnimation(characterId, moveId, realMoveData) {
       phase: "idle"
     };
   });
-
-  applyMoveCorrections(characterId, moveId, frames);
 
   let firstActive = Number.POSITIVE_INFINITY;
   let lastActive = -1;
@@ -501,7 +435,7 @@ export class RealDataProvider {
 
     const cacheKey = `${characterId}:${moveId}`;
     if (!dataset.animationCache.has(cacheKey)) {
-      const normalizedMove = buildMoveAnimation(record.id, moveId, moveBundle.realMoveData);
+      const normalizedMove = buildMoveAnimation(moveId, moveBundle.realMoveData);
       dataset.animationCache.set(cacheKey, {
         character: {
           id: record.id,
