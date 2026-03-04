@@ -72,6 +72,21 @@ sync_repo() {
   fi
 }
 
+ensure_subrepo_local_ignore() {
+  local repo_path="$1"
+  shift
+  local exclude_file="$repo_path/.git/info/exclude"
+  mkdir -p "$(dirname "$exclude_file")"
+  touch "$exclude_file"
+
+  local pattern
+  for pattern in "$@"; do
+    if ! grep -Fqx "$pattern" "$exclude_file"; then
+      printf '%s\n' "$pattern" >> "$exclude_file"
+    fi
+  done
+}
+
 require_command git
 require_command python3
 
@@ -96,6 +111,11 @@ sync_repo "gciso" "https://github.com/pfirsich/gciso"
 sync_repo "meleeDat2Json" "https://github.com/pfirsich/meleeDat2Json"
 sync_repo "meleeFrameDataExtractor" "https://github.com/pfirsich/meleeFrameDataExtractor"
 sync_repo "HSDLib" "https://github.com/Ploaj/HSDLib"
+
+# Local pip installs for gciso/meleeDat2Json can generate build artifacts
+# in the source checkout. Keep those ignored so gitlink paths stay clean.
+ensure_subrepo_local_ignore "$SRC_DIR/gciso" "build/" "dist/" "*.egg-info/"
+ensure_subrepo_local_ignore "$SRC_DIR/meleeDat2Json" "build/" "dist/" "*.egg-info/"
 
 "$PIP" install --upgrade "$SRC_DIR/gciso" "$SRC_DIR/meleeDat2Json"
 
