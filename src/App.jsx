@@ -236,8 +236,13 @@ export default function App() {
         const charactersPayload = await charactersResponse.json();
         setCharacters(charactersPayload.characters);
 
-        const first = charactersPayload.characters[0] || null;
-        const second = charactersPayload.characters[1] || charactersPayload.characters[0] || null;
+        const availableCharacters = charactersPayload.characters || [];
+        const charactersById = new Map(availableCharacters.map((character) => [character.id, character]));
+        const first = charactersById.get("peach") || availableCharacters[0] || null;
+        const second =
+          charactersById.get("sheik") ||
+          availableCharacters.find((character) => character.id !== first?.id) ||
+          first;
         setFighterA(buildFighterFromCharacter(first, 1, getStageSpawnX(DEFAULT_STAGE_ID, "A")));
         setFighterB(buildFighterFromCharacter(second, -1, getStageSpawnX(DEFAULT_STAGE_ID, "B")));
 

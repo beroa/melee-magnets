@@ -277,7 +277,7 @@ internal sealed class Program
                     hitboxes =
                         worldTransforms != null && hitboxesByFrame.TryGetValue(frameIndex, out var activeHitboxes)
                             ? TransformHitboxes(
-                                activeHitboxes,
+                                ApplyKnownHitboxCorrections(character, moveId, activeHitboxes),
                                 joints,
                                 worldTransforms,
                                 modelScale)
@@ -462,6 +462,34 @@ internal sealed class Program
 
         EmitUntil(frameCount + 1);
         return parsedAnyCommand ? frameMap : null;
+    }
+
+    private static List<HitboxLocal> ApplyKnownHitboxCorrections(
+        CharacterInfo character,
+        string moveId,
+        IReadOnlyList<HitboxLocal> hitboxes)
+    {
+        var corrected = hitboxes.Select(CloneHitbox).ToList();
+
+        if (!string.Equals(character.Code, "Pe", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(moveId, "dashattack", StringComparison.OrdinalIgnoreCase))
+        {
+            return corrected;
+        }
+
+        var handBone =
+            corrected.FirstOrDefault(hitbox => hitbox.id == 0 && hitbox.bone > 0)?.bone ??
+            87;
+
+        foreach (var hitbox in corrected)
+        {
+            if (hitbox.id == 1 && hitbox.bone == 0)
+            {
+                hitbox.bone = handBone;
+            }
+        }
+
+        return corrected;
     }
 
     private static HitboxLocal CloneHitbox(HitboxLocal hitbox)
